@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Distribución POP — Panel de prueba</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --border: #2a2e37;
+    --text: #e8e9ec;
+    --text-dim: #9aa0ab;
+    --accent: #6c5ce7;
+    --accent-hover: #5849c4;
+    --ok: #2ecc71;
+    --error: #e74c3c;
+    --input-bg: #1f232c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 14px 0; }
+  label { display: block; font-size: 13px; color: var(--text-dim); margin: 10px 0 4px; }
+  input[type=text], input[type=password], input[type=number] {
+    width: 100%;
+    padding: 9px 10px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .checkbox-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+  .checkbox-group label {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text);
+    margin: 0;
+    cursor: pointer;
+  }
+  .checkbox-group input { width: auto; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 14px;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .msg { font-size: 13px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; }
+  .msg.ok { background: rgba(46,204,113,0.12); color: var(--ok); border: 1px solid rgba(46,204,113,0.3); }
+  .msg.error { background: rgba(231,76,60,0.12); color: var(--error); border: 1px solid rgba(231,76,60,0.3); }
+  .hidden { display: none; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 500; }
+  .tag { padding: 2px 8px; border-radius: 999px; font-size: 11px; }
+  .tag.completada { background: rgba(46,204,113,0.15); color: var(--ok); }
+  .tag.parcial { background: rgba(241,196,15,0.15); color: #f1c40f; }
+  .tag.rechazada { background: rgba(231,76,60,0.15); color: var(--error); }
+  .tag.pendiente { background: rgba(154,160,171,0.15); color: var(--text-dim); }
+  .top-bar { display: flex; justify-content: space-between; align-items: center; }
+  .top-bar span { font-size: 13px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>📦 Distribución de Material POP</h1>
+  <div class="subtitle">Panel de prueba — login, registro, solicitud y descarga</div>
+
+  <!-- Configuración de backend -->
+  <div class="card">
+    <h2>Backend</h2>
+    <label>URL de la API</label>
+    <input type="text" id="apiUrl" value="https://pop-distribucion-production.up.railway.app">
+  </div>
+
+  <!-- Login / Registro -->
+  <div class="card" id="authCard">
+    <div class="top-bar">
+      <h2>Acceso</h2>
+      <span id="authStatus">No has iniciado sesión</span>
+    </div>
+    <label>Correo (usuario)</label>
+    <input type="text" id="loginUser" placeholder="correo@ejemplo.com">
+    <label>Contraseña</label>
+    <input type="password" id="loginPass" placeholder="••••••••">
+    <div class="row">
+      <div><button onclick="registrar()">Crear cuenta</button></div>
+      <div><button onclick="login()">Iniciar sesión</button></div>
+      <div><button class="secondary" onclick="cerrarSesion()">Cerrar sesión</button></div>
+    </div>
+    <div id="authMsg"></div>
+  </div>
+
+  <!-- Formulario de solicitud (solo si hay sesión) -->
+  <div class="card hidden" id="formCard">
+    <h2>Nueva solicitud de distribución</h2>
+
+    <label>Tipo de POP</label>
+    <input type="text" id="tipoPop" placeholder="Ej. Washer TL-Modelo">
+
+    <label>Modelo (déjalo vacío para usar el catálogo de "varios modelos" de este Tipo de POP)</label>
+    <input type="text" id="modelo" placeholder="Vacío = 1 a varios (según catálogo)">
+
+    <label>Cantidad total</label>
+    <input type="number" id="cantidadTotal" placeholder="Ej. 750">
+
+    <label>País</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" value="GT"> GT</label>
+      <label><input type="checkbox" value="SV"> SV</label>
+      <label><input type="checkbox" value="HN"> HN</label>
+    </div>
+
+    <label>¿Sobre qué dimensión filtrar el Grado?</label>
+    <select id="dimensionGrado" style="width:100%;padding:9px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+      <option value="pos">POS (Grade POS general)</option>
+      <option value="division">División (grado específico por MX/AV/DA)</option>
+      <option value="cluster">Cluster (Grade Cluster)</option>
+    </select>
+
+    <label>División (solo aplica si elegiste "División" arriba)</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" value="DA"> DA</label>
+      <label><input type="checkbox" value="AV"> AV</label>
+      <label><input type="checkbox" value="MX"> MX</label>
+    </div>
+
+    <label>Grado POS</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" value="A"> A</label>
+      <label><input type="checkbox" value="A1"> A1</label>
+      <label><input type="checkbox" value="B"> B</label>
+      <label><input type="checkbox" value="C"> C</label>
+      <label><input type="checkbox" value="D"> D</label>
+      <label><input type="checkbox" value="-"> -</label>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Account (distribución puntual, opcional)</label>
+        <input type="text" id="account" placeholder="Opcional">
+      </div>
+      <div>
+        <label>Site Group (distribución puntual, opcional)</label>
+        <input type="text" id="siteGroup" placeholder="Opcional">
+      </div>
+    </div>
+
+    <button onclick="enviarSolicitud()">Calcular reparto</button>
+    <div id="formMsg"></div>
+  </div>
+
+  <!-- Historial -->
+  <div class="card hidden" id="historialCard">
+    <div class="top-bar">
+      <h2>Historial de solicitudes</h2>
+      <button class="secondary" onclick="cargarHistorial()">Actualizar</button>
+    </div>
+    <table id="historialTabla">
+      <thead>
+        <tr><th>ID</th><th>Tipo POP</th><th>Modelo</th><th>Cantidad</th><th>Estado</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+let token = null;
+
+try {
+  token = localStorage.getItem('pop_token');
+} catch (e) { /* almacenamiento no disponible, seguimos sin sesión persistida */ }
+
+function apiUrl() {
+  return document.getElementById('apiUrl').value.replace(/\/$/, '');
+}
+
+function mostrarMsg(elId, texto, tipo) {
+  const el = document.getElementById(elId);
+  el.innerHTML = `<div class="msg ${tipo}">${texto}</div>`;
+}
+
+function actualizarUI() {
+  const logueado = !!token;
+  document.getElementById('formCard').classList.toggle('hidden', !logueado);
+  document.getElementById('historialCard').classList.toggle('hidden', !logueado);
+  document.getElementById('authStatus').textContent = logueado
+    ? 'Sesión activa'
+    : 'No has iniciado sesión';
+  if (logueado) cargarHistorial();
+}
+
+async function registrar() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  try {
+    const r = await fetch(`${apiUrl()}/auth/registro`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      mostrarMsg('authMsg', 'Usuario creado. Ahora inicia sesión.', 'ok');
+    } else {
+      mostrarMsg('authMsg', data.detail || 'No se pudo registrar.', 'error');
+    }
+  } catch (e) {
+    mostrarMsg('authMsg', 'Error de conexión con la API: ' + e.message, 'error');
+  }
+}
+
+async function login() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  try {
+    const r = await fetch(`${apiUrl()}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      token = data.access_token;
+      try { localStorage.setItem('pop_token', token); } catch (e) {}
+      mostrarMsg('authMsg', `Sesión iniciada (rol: ${data.rol}). El token expira en 20 minutos.`, 'ok');
+      actualizarUI();
+    } else {
+      mostrarMsg('authMsg', data.detail || 'No se pudo iniciar sesión.', 'error');
+    }
+  } catch (e) {
+    mostrarMsg('authMsg', 'Error de conexión con la API: ' + e.message, 'error');
+  }
+}
+
+function cerrarSesion() {
+  token = null;
+  try { localStorage.removeItem('pop_token'); } catch (e) {}
+  mostrarMsg('authMsg', 'Sesión cerrada.', 'ok');
+  actualizarUI();
+}
+
+function checkedValues(selector) {
+  return Array.from(document.querySelectorAll(selector + ' input:checked')).map(i => i.value);
+}
+
+async function enviarSolicitud() {
+  if (!token) {
+    mostrarMsg('formMsg', 'Primero inicia sesión.', 'error');
+    return;
+  }
+  const body = {
+    tipo_pop: document.getElementById('tipoPop').value,
+    modelo: document.getElementById('modelo').value || null,
+    cantidad_total: parseInt(document.getElementById('cantidadTotal').value, 10),
+    dimension_grado: document.getElementById('dimensionGrado').value,
+    pais: [],
+    division: [],
+    grado_pos: [],
+    account: document.getElementById('account').value || null,
+    site_group: document.getElementById('siteGroup').value || null
+  };
+
+  // Recolectar cada grupo de checkboxes por su posición real en el formulario
+  const grupos = document.querySelectorAll('#formCard .checkbox-group');
+  body.pais = Array.from(grupos[0].querySelectorAll('input:checked')).map(i => i.value);
+  body.division = Array.from(grupos[1].querySelectorAll('input:checked')).map(i => i.value);
+  body.grado_pos = Array.from(grupos[2].querySelectorAll('input:checked')).map(i => i.value);
+
+  try {
+    const r = await fetch(`${apiUrl()}/solicitudes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (r.ok) {
+      if (data.estado === 'completada') {
+        mostrarMsg('formMsg', `✅ Completada.${data.tiendas_calificadas ? ` ${data.tiendas_calificadas} tiendas, ${data.cantidad_por_tienda} unidades c/u.` : ' Ver detalle en el Excel descargable.'}`, 'ok');
+      } else if (data.estado === 'parcial') {
+        mostrarMsg('formMsg', `⚠️ Completada parcialmente. Algunos modelos fallaron: ${data.mensaje}`, 'error');
+      } else {
+        mostrarMsg('formMsg', `⚠️ Rechazada: ${data.mensaje}`, 'error');
+      }
+      cargarHistorial();
+    } else {
+      mostrarMsg('formMsg', data.detail || 'Error al crear la solicitud.', 'error');
+    }
+  } catch (e) {
+    mostrarMsg('formMsg', 'Error de conexión con la API: ' + e.message, 'error');
+  }
+}
+
+async function cargarHistorial() {
+  if (!token) return;
+  try {
+    const r = await fetch(`${apiUrl()}/solicitudes`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await r.json();
+    const tbody = document.querySelector('#historialTabla tbody');
+    tbody.innerHTML = '';
+    if (!Array.isArray(data)) return;
+    data.forEach(s => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${s.id}</td>
+        <td>${s.tipo_pop}</td>
+        <td>${s.modelo || '-'}</td>
+        <td>${s.cantidad_total}</td>
+        <td><span class="tag ${s.estado}">${s.estado}</span></td>
+        <td>${(s.estado === 'completada' || s.estado === 'parcial') ? `<button class="secondary" onclick="descargarExcel(${s.id})">Descargar</button>` : ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error('No se pudo cargar el historial:', e);
+  }
+}
+
+async function descargarExcel(id) {
+  try {
+    const r = await fetch(`${apiUrl()}/solicitudes/${id}/excel`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!r.ok) {
+      alert('No se pudo descargar el Excel de la solicitud ' + id);
+      return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `distribucion_${id}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Error al descargar: ' + e.message);
+  }
+}
+
+actualizarUI();
+</script>
+</body>
+</html>

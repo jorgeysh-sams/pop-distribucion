@@ -1,15 +1,15 @@
 """
 Carga un Excel de tiendas (RMF) hacia la tabla rmf_tiendas en Postgres.
+Usa openpyxl puro (sin pandas/numpy) para evitar bloqueos de DLL en equipos
+corporativos con políticas de Control de aplicaciones (WDAC/AppLocker).
 
 Uso:
-    python scripts/ingesta_excel.py ruta_al_excel.xlsx [nombre_o_indice_hoja]
-
-Requiere DATABASE_URL en el entorno (o en un archivo .env en la raíz del proyecto).
+    python scripts/ingesta_excel.py ruta_al_excel.xlsx [nombre_hoja]
 """
 import os
 import sys
 
-import pandas as pd
+from openpyxl import load_workbook
 import psycopg2
 from psycopg2.extras import execute_values
 from dotenv import load_dotenv
@@ -17,8 +17,6 @@ from dotenv import load_dotenv
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Mapeo: nombre de columna en el Excel -> nombre de columna en rmf_tiendas
-# Ajusta esto si los encabezados reales del Excel difieren de estos nombres.
 COLUMN_MAP = {
     "GSCM": "gscm",
     "Country": "country",
@@ -42,35 +40,41 @@ COLUMN_MAP = {
 }
 
 
-def cargar_excel(path: str, hoja=0):
+def cargar_excel(path: str, hoja=None):
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL no está configurada. Revisa tu archivo .env")
 
-    df = pd.read_excel(path, sheet_name=hoja)
-    df = df.rename(columns=lambda c: str(c).strip())
-    df = df.rename(columns=COLUMN_MAP)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    ws = wb[hoja] if hoja else wb.worksheets[0]
 
-    columnas_validas = [c for c in COLUMN_MAP.values() if c in df.columns]
+    filas = ws.iter_rows(values_only=True)
+    encabezados_originales = [str(h).strip() if h is not None else "" for h in next(filas)]
+    encabezados_db = [COLUMN_MAP.get(h) for h in encabezados_originales]
+
+    columnas_validas = [c for c in encabezados_db if c is not None]
     if not columnas_validas:
         raise ValueError(
             "No se encontró ninguna columna esperada en el Excel. "
-            "Revisa COLUMN_MAP en este script contra los encabezados reales."
+            "Revisa COLUMN_MAP en este script contra los encabezados reales: "
+            f"{encabezados_originales}"
         )
 
-    df = df[columnas_validas]
+    valores = []
+    for fila in filas:
+        registro = {}
+        for header_db, valor in zip(encabezados_db, fila):
+            if header_db is not None:
+                registro[header_db] = valor
 
-    # Texto descriptivo por fila (útil a futuro para búsqueda semántica / RAG)
-    def construir_descripcion(row):
-        partes = [f"{col}: {row[col]}" for col in columnas_validas if pd.notna(row[col])]
-        return " | ".join(partes)
+        if not any(registro.values()):
+            continue  # fila vacía
 
-    df["descripcion_texto"] = df.apply(construir_descripcion, axis=1)
+        partes_desc = [f"{c}: {registro[c]}" for c in columnas_validas if registro.get(c) not in (None, "")]
+        descripcion = " | ".join(partes_desc)
+
+        valores.append(tuple(registro.get(c) for c in columnas_validas) + (descripcion,))
+
     columnas_insert = columnas_validas + ["descripcion_texto"]
-
-    valores = [
-        tuple(row[c] if pd.notna(row[c]) else None for c in columnas_insert)
-        for _, row in df.iterrows()
-    ]
 
     conn = psycopg2.connect(DATABASE_URL)
     try:
@@ -85,9 +89,9 @@ def cargar_excel(path: str, hoja=0):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Uso: python scripts/ingesta_excel.py ruta_al_excel.xlsx [nombre_o_indice_hoja]")
+        print("Uso: python scripts/ingesta_excel.py ruta_al_excel.xlsx [nombre_hoja]")
         sys.exit(1)
 
     ruta = sys.argv[1]
-    hoja = sys.argv[2] if len(sys.argv) > 2 else 0
+    hoja = sys.argv[2] if len(sys.argv) > 2 else None
     cargar_excel(ruta, hoja)

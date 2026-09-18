@@ -47,12 +47,31 @@ CREATE SCHEMA IF NOT EXISTS resultados;
 CREATE TABLE IF NOT EXISTS resultados.distribucion_resultados (
     id SERIAL PRIMARY KEY,
     solicitud_id INTEGER REFERENCES solicitudes.solicitudes(id) ON DELETE CASCADE,
+    modelo VARCHAR(255),
     tienda VARCHAR(255) NOT NULL,
     account VARCHAR(255),
     site_group VARCHAR(255),
     cantidad_asignada INTEGER NOT NULL,
     fecha_generado TIMESTAMP DEFAULT NOW()
 );
+
+-- ---------------------------------------------------------
+-- Catálogo: Material PoP -> SKU(s), segmentado por División y Categoría de tienda
+-- Un Material PoP con un solo SKU (para una división/categoría) = relación 1 a 1
+-- Un Material PoP con varios SKU = relación 1 a muchos (precargado)
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS catalogo_pop (
+    id SERIAL PRIMARY KEY,
+    material_pop VARCHAR(255) NOT NULL,
+    sku VARCHAR(255) NOT NULL,
+    division VARCHAR(10) NOT NULL,          -- DA | AV | MX
+    categoria_tienda VARCHAR(10) NOT NULL,  -- A | A1 | B | C | D | -
+    status VARCHAR(20) NOT NULL DEFAULT 'Activo',  -- Activo | Inactivo
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE (material_pop, sku, division, categoria_tienda)
+);
+CREATE INDEX IF NOT EXISTS idx_catalogo_material_pop ON catalogo_pop (material_pop);
+CREATE INDEX IF NOT EXISTS idx_catalogo_status ON catalogo_pop (status);
 
 -- ---------------------------------------------------------
 -- Tablas de datos base (ingesta desde Excel)
@@ -69,9 +88,9 @@ CREATE TABLE IF NOT EXISTS rmf_tiendas (
     account VARCHAR(255),
     site_group VARCHAR(255),
     mso_name VARCHAR(255),
-    mx NUMERIC DEFAULT 0,
-    av NUMERIC DEFAULT 0,
-    da NUMERIC DEFAULT 0,
+    mx VARCHAR(10),
+    av VARCHAR(10),
+    da VARCHAR(10),
     grade_pos VARCHAR(50),
     grade_cluster VARCHAR(50),
     mx5 NUMERIC,
@@ -107,11 +126,11 @@ CREATE INDEX IF NOT EXISTS idx_inv_mso_embedding ON inv_mso USING ivfflat (embed
 -- INV (GSM)
 CREATE TABLE IF NOT EXISTS inv_gsm (
     id SERIAL PRIMARY KEY,
+    site_id VARCHAR(100),
     mkt_name VARCHAR(255),
     inventario NUMERIC,
+    prom_inv NUMERIC,
     lineas NUMERIC,
-    tiendas VARCHAR(255),
-    fil VARCHAR(255),
     descripcion_texto TEXT,
     embedding VECTOR(1536),
     created_at TIMESTAMP DEFAULT NOW()

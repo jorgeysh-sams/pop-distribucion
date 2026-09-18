@@ -89,6 +89,31 @@ UPDATE auth.usuarios SET rol = 'admin' WHERE username = 'tu_usuario';
 | GET | `/solicitudes/{id}/excel` | Dueño de la solicitud, o supervisor/admin |
 | PATCH | `/admin/usuarios/{id}/rol` | Solo admin |
 
+## Catálogo de Material PoP → SKU(s)
+
+Tabla `catalogo_pop` con 5 campos: **Material PoP**, **Sku**, **Categoria de tienda** (mismos valores que Grado POS: A/A1/B/C/D/-), **Division** (DA/AV/MX), **Status** (Activo/Inactivo).
+
+- Si el formulario envía un **Modelo específico** → reparto simple (1 a 1), sin cambios respecto al flujo original.
+- Si el formulario **deja el Modelo vacío** → el sistema busca en `catalogo_pop` los SKU **Activos** cuyo `material_pop` coincida con el Tipo de POP, y cuya `division`/`categoria_tienda` coincidan con lo que el usuario marcó en el formulario. Divide la Cantidad total entre esos SKU (debe caer exacto), y reparte cada parte entre las tiendas de forma independiente por SKU. Si algún SKU no cae exacto entre tiendas, la solicitud queda `parcial` (los demás SKU sí se guardan).
+
+Para cargar el catálogo:
+```bash
+python scripts/ingesta_catalogo.py ruta_al_excel.xlsx
+```
+(el Excel debe tener columnas: Material PoP, Sku, Categoria de tienda, Division, Status)
+
+O vía API (rol admin/supervisor):
+```
+POST /catalogo
+{
+  "material_pop": "AI Energy Mode-Art-23-iman",
+  "items": [
+    {"sku": "RT31DG5124S9AP", "division": "DA", "categoria_tienda": "A", "status": "Activo"},
+    {"sku": "RT31DG5224S9AP", "division": "DA", "categoria_tienda": "A1", "status": "Activo"}
+  ]
+}
+```
+
 ## Pendiente / próximos bloques
 
 - Script de ingesta de Excel → `rmf_tiendas` / `inv_mso` / `inv_gsm`

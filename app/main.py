@@ -3,7 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.database import get_conn
-from app.schemas import RegistroRequest, LoginRequest, TokenResponse, SolicitudRequest, SolicitudResponse
+from app.schemas import (
+    RegistroRequest, LoginRequest, TokenResponse, SolicitudRequest, SolicitudResponse,
+    CatalogoPopRequest, CatalogoPopItem,
+)
 from app.auth import crear_usuario, autenticar_usuario, crear_token, obtener_usuario_actual, requiere_rol
 from app.calculo import calcular_reparto
 from app.excel_export import generar_excel_resultado
@@ -70,7 +73,7 @@ def crear_solicitud(datos: SolicitudRequest, usuario: dict = Depends(obtener_usu
         solicitud_id = cur.fetchone()["id"]
         conn.commit()
 
-        # 2. Calcular el reparto
+        # 2. Calcular el reparto (1 a 1 si viene modelo, o 1 a varios via catálogo si no)
         resultado = calcular_reparto(datos.model_dump())
 
         if not resultado.get("ok"):
@@ -85,29 +88,37 @@ def crear_solicitud(datos: SolicitudRequest, usuario: dict = Depends(obtener_usu
                 mensaje=resultado.get("error"),
             )
 
-        # 3. Guardar el resultado
+        # 3. Guardar el resultado (incluye modelo cuando el reparto fue 1 a varios)
         for item in resultado["detalle"]:
             cur.execute(
                 """
                 INSERT INTO resultados.distribucion_resultados
-                    (solicitud_id, tienda, account, site_group, cantidad_asignada)
-                VALUES (%s, %s, %s, %s, %s)
+                    (solicitud_id, modelo, tienda, account, site_group, cantidad_asignada)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (solicitud_id, item["tienda"], item["account"], item["site_group"], item["cantidad_asignada"]),
+                (solicitud_id, item.get("modelo"), item["tienda"], item["account"], item["site_group"], item["cantidad_asignada"]),
+            )
+
+        estado_final = "parcial" if resultado.get("parcial") else "completada"
+        mensaje_error = None
+        if resultado.get("modelos_fallidos"):
+            mensaje_error = "; ".join(
+                f"{m['modelo']}: {m['error']}" for m in resultado["modelos_fallidos"]
             )
 
         cur.execute(
-            "UPDATE solicitudes.solicitudes SET estado = 'completada' WHERE id = %s",
-            (solicitud_id,),
+            "UPDATE solicitudes.solicitudes SET estado = %s, mensaje_error = %s WHERE id = %s",
+            (estado_final, mensaje_error, solicitud_id),
         )
         conn.commit()
 
         return SolicitudResponse(
             solicitud_id=solicitud_id,
-            estado="completada",
+            estado=estado_final,
+            mensaje=mensaje_error,
             cantidad_total=resultado["cantidad_total"],
-            tiendas_calificadas=resultado["tiendas_calificadas"],
-            cantidad_por_tienda=resultado["cantidad_por_tienda"],
+            tiendas_calificadas=resultado.get("tiendas_calificadas"),
+            cantidad_por_tienda=resultado.get("cantidad_por_tienda"),
         )
     finally:
         conn.close()
@@ -160,23 +171,19 @@ def descargar_excel(solicitud_id: int, usuario: dict = Depends(obtener_usuario_a
         if usuario["rol"] == "usuario" and solicitud["usuario_id"] != usuario["user_id"]:
             raise HTTPException(status_code=403, detail="No puedes descargar esta solicitud.")
 
-        if solicitud["estado"] != "completada":
-            raise HTTPException(status_code=400, detail="Esta solicitud no tiene un resultado completado.")
+        if solicitud["estado"] not in ("completada", "parcial"):
+            raise HTTPException(status_code=400, detail="Esta solicitud no tiene un resultado disponible para descargar.")
 
         cur.execute(
-            "SELECT tienda, account, site_group, cantidad_asignada FROM resultados.distribucion_resultados WHERE solicitud_id = %s",
+            "SELECT modelo, tienda, account, site_group, cantidad_asignada FROM resultados.distribucion_resultados WHERE solicitud_id = %s ORDER BY modelo, tienda",
             (solicitud_id,),
         )
         detalle = cur.fetchall()
-
-        cantidad_por_tienda = detalle[0]["cantidad_asignada"] if detalle else 0
 
         resultado = {
             "tipo_pop": solicitud["tipo_pop"],
             "modelo": solicitud["modelo"],
             "cantidad_total": solicitud["cantidad_total"],
-            "tiendas_calificadas": len(detalle),
-            "cantidad_por_tienda": cantidad_por_tienda,
             "detalle": detalle,
         }
 
@@ -211,5 +218,71 @@ def cambiar_rol(usuario_id: int, nuevo_rol: str, _: dict = Depends(requiere_rol(
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
         conn.commit()
         return actualizado
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------
+# CATÁLOGO — Tipo de POP -> Modelo(s)
+# ---------------------------------------------------------
+
+@app.post("/catalogo")
+def agregar_al_catalogo(datos: CatalogoPopRequest, usuario: dict = Depends(requiere_rol("admin", "supervisor"))):
+    """Agrega uno o varios SKU para un Material PoP, cada uno con su División y Categoría de tienda."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        insertados = []
+        for item in datos.items:
+            cur.execute(
+                """
+                INSERT INTO catalogo_pop (material_pop, sku, division, categoria_tienda, status)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (material_pop, sku, division, categoria_tienda)
+                DO UPDATE SET status = EXCLUDED.status
+                RETURNING id, material_pop, sku, division, categoria_tienda, status
+                """,
+                (datos.material_pop, item.sku, item.division, item.categoria_tienda, item.status),
+            )
+            fila = cur.fetchone()
+            if fila:
+                insertados.append(fila)
+        conn.commit()
+        return {"insertados": insertados}
+    finally:
+        conn.close()
+
+
+@app.get("/catalogo/{material_pop}")
+def consultar_catalogo(material_pop: str, usuario: dict = Depends(obtener_usuario_actual)):
+    """Cualquier usuario autenticado puede consultar los SKU de un Material PoP."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, sku, division, categoria_tienda, status
+            FROM catalogo_pop
+            WHERE material_pop = %s
+            ORDER BY division, categoria_tienda, sku
+            """,
+            (material_pop,),
+        )
+        return cur.fetchall()
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/catalogo/{catalogo_id}")
+def eliminar_del_catalogo(catalogo_id: int, _: dict = Depends(requiere_rol("admin"))):
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM catalogo_pop WHERE id = %s RETURNING id", (catalogo_id,))
+        eliminado = cur.fetchone()
+        if not eliminado:
+            raise HTTPException(status_code=404, detail="Registro de catálogo no encontrado.")
+        conn.commit()
+        return {"eliminado": eliminado["id"]}
     finally:
         conn.close()

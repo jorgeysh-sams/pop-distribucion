@@ -18,20 +18,18 @@ def generar_excel_resultado(resultado: dict, solicitud_id: int) -> BytesIO:
     ws["A2"] = "Tipo de POP"
     ws["B2"] = resultado.get("tipo_pop")
     ws["A3"] = "Modelo"
-    ws["B3"] = resultado.get("modelo")
+    ws["B3"] = resultado.get("modelo") or "(varios — ver detalle)"
     ws["A4"] = "Cantidad total"
     ws["B4"] = resultado.get("cantidad_total")
-    ws["A5"] = "Tiendas calificadas"
-    ws["B5"] = resultado.get("tiendas_calificadas")
-    ws["A6"] = "Cantidad por tienda"
-    ws["B6"] = resultado.get("cantidad_por_tienda")
+    ws["A5"] = "Total de registros"
+    ws["B5"] = len(resultado.get("detalle", []))
 
-    for row in range(1, 7):
+    for row in range(1, 6):
         ws[f"A{row}"].font = Font(bold=True)
 
     # --- Tabla de detalle ---
-    fila_inicio = 8
-    headers = ["No.", "Tienda", "Account", "Site Group", "Cantidad Asignada"]
+    fila_inicio = 7
+    headers = ["No.", "Modelo", "Tienda", "Account", "Site Group", "Cantidad Asignada"]
     header_fill = PatternFill(start_color="1F1F1F", end_color="1F1F1F", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
 
@@ -44,13 +42,14 @@ def generar_excel_resultado(resultado: dict, solicitud_id: int) -> BytesIO:
     for i, item in enumerate(resultado.get("detalle", []), start=1):
         fila = fila_inicio + i
         ws.cell(row=fila, column=1, value=i)
-        ws.cell(row=fila, column=2, value=item.get("tienda"))
-        ws.cell(row=fila, column=3, value=item.get("account"))
-        ws.cell(row=fila, column=4, value=item.get("site_group"))
-        ws.cell(row=fila, column=5, value=item.get("cantidad_asignada"))
+        ws.cell(row=fila, column=2, value=item.get("modelo") or resultado.get("modelo"))
+        ws.cell(row=fila, column=3, value=item.get("tienda"))
+        ws.cell(row=fila, column=4, value=item.get("account"))
+        ws.cell(row=fila, column=5, value=item.get("site_group"))
+        ws.cell(row=fila, column=6, value=item.get("cantidad_asignada"))
 
     # --- Ajuste de anchos de columna ---
-    anchos = [6, 30, 25, 25, 20]
+    anchos = [6, 30, 30, 25, 25, 20]
     for i, ancho in enumerate(anchos, start=1):
         ws.column_dimensions[chr(64 + i)].width = ancho
 
